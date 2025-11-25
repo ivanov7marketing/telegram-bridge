@@ -67,20 +67,33 @@ class TelegramClient:
     async def _wait_qr_scan(self):
         """Ожидание сканирования QR-кода в фоне"""
         if not self.qr_handler:
+            logger.error("QR handler not initialized")
             return
         
         try:
+            logger.info(f"🔍 Starting QR scan monitoring for session {self.session_id}")
             success = await self.qr_handler.wait_for_auth(timeout=120)
             
             if success:
                 self.is_connected = True
                 await self._setup_message_handler()
-                logger.info(f"Session {self.session_id} connected via QR")
+                
+                # Обновляем статус сессии
+                from .sessions import session_manager
+                from .models import SessionStatus
+                user = await self.get_me()
+                session_manager.update_session_status(
+                    self.session_id,
+                    SessionStatus.CONNECTED,
+                    user
+                )
+                
+                logger.info(f"✅ Session {self.session_id} connected via QR")
             else:
-                logger.warning(f"QR auth timeout for session {self.session_id}")
+                logger.warning(f"⏱️ QR auth timeout for session {self.session_id}")
                 
         except Exception as e:
-            logger.error(f"QR scan wait error: {e}")
+            logger.error(f"❌ QR scan wait error: {e}", exc_info=True)
     
     async def start_phone_auth(self):
         """

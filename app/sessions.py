@@ -61,11 +61,14 @@ class SessionManager:
         """Обновление статуса сессии"""
         if session_id in self.sessions_info:
             info = self.sessions_info[session_id]
+            old_status = info.status
             info.status = status
             if user:
                 info.user = user
             if status == SessionStatus.CONNECTED:
                 info.connected_at = datetime.utcnow()
+            
+            logger.info(f"📝 Session {session_id} status: {old_status} → {status}")
     
     async def remove_session(self, session_id: str):
         """Удаление сессии"""

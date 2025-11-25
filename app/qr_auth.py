@@ -80,9 +80,16 @@ class QRAuthHandler:
         try:
             from pyrogram.raw import functions, types
             
+            logger.info(f"⏳ Waiting for QR scan (timeout: {timeout}s)")
             start_time = asyncio.get_event_loop().time()
+            iteration = 0
             
             while asyncio.get_event_loop().time() - start_time < timeout:
+                iteration += 1
+                if iteration % 5 == 0:  # Логируем каждые 10 секунд
+                    elapsed = int(asyncio.get_event_loop().time() - start_time)
+                    logger.debug(f"🔄 Checking auth status... ({elapsed}/{timeout}s)")
+                
                 # Проверяем статус авторизации
                 result = await self.client.invoke(
                     functions.auth.ExportLoginToken(
@@ -93,25 +100,25 @@ class QRAuthHandler:
                 )
                 
                 if isinstance(result, types.auth.LoginTokenSuccess):
-                    # Авторизация успешна!
+                    logger.info("✅ QR code scanned successfully!")
                     authorization = result.authorization
                     
                     if isinstance(authorization, types.auth.Authorization):
+                        logger.info(f"✅ User authorized: {authorization.user.id}")
                         return True
                 
                 elif isinstance(result, types.auth.LoginTokenMigrateTo):
-                    # Нужна миграция на другой DC
-                    logger.info(f"Migrating to DC {result.dc_id}")
+                    logger.info(f"🔄 Migrating to DC {result.dc_id}")
                     await self.client.connect()
-                    
+                
                 await asyncio.sleep(2)  # Проверяем каждые 2 секунды
             
+            logger.warning("⏱️ QR auth timeout - no scan detected")
             return False
             
         except SessionPasswordNeeded:
-            # Требуется 2FA
-            logger.warning("2FA required")
+            logger.warning("🔐 2FA required")
             return False
         except Exception as e:
-            logger.error(f"Auth wait error: {e}")
+            logger.error(f"❌ Auth wait error: {e}", exc_info=True)
             return False
