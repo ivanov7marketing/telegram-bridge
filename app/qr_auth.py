@@ -86,39 +86,49 @@ class QRAuthHandler:
             
             while asyncio.get_event_loop().time() - start_time < timeout:
                 iteration += 1
-                if iteration % 5 == 0:  # Логируем каждые 10 секунд
-                    elapsed = int(asyncio.get_event_loop().time() - start_time)
-                    logger.debug(f"🔄 Checking auth status... ({elapsed}/{timeout}s)")
+                elapsed = int(asyncio.get_event_loop().time() - start_time)
                 
-                # Проверяем статус авторизации
-                result = await self.client.invoke(
-                    functions.auth.ExportLoginToken(
-                        api_id=self.client.api_id,
-                        api_hash=self.client.api_hash,
-                        except_ids=[]
+                if iteration % 5 == 0:  # Каждые 10 секунд
+                    logger.info(f"🔄 Checking auth status... ({elapsed}/{timeout}s, iteration {iteration})")
+                
+                try:
+                    # ОБЕРНУТЬ В TRY/EXCEPT!
+                    result = await self.client.invoke(
+                        functions.auth.ExportLoginToken(
+                            api_id=self.client.api_id,
+                            api_hash=self.client.api_hash,
+                            except_ids=[]
+                        )
                     )
-                )
-                
-                if isinstance(result, types.auth.LoginTokenSuccess):
-                    logger.info("✅ QR code scanned successfully!")
-                    authorization = result.authorization
                     
-                    if isinstance(authorization, types.auth.Authorization):
-                        logger.info(f"✅ User authorized: {authorization.user.id}")
-                        return True
+                    logger.debug(f"Auth check result type: {type(result).__name__}")
+                    
+                    if isinstance(result, types.auth.LoginTokenSuccess):
+                        logger.info("✅ QR code scanned successfully!")
+                        authorization = result.authorization
+                        
+                        if isinstance(authorization, types.auth.Authorization):
+                            logger.info(f"✅ User authorized: {authorization.user.id}")
+                            return True
+                    
+                    elif isinstance(result, types.auth.LoginTokenMigrateTo):
+                        logger.info(f"🔄 Migrating to DC {result.dc_id}")
+                        await self.client.connect()
+                    
+                    elif isinstance(result, types.auth.LoginToken):
+                        # Обычный ответ - токен еще не отсканирован
+                        pass
+                    
+                except Exception as e:
+                    # ОШИБКА В ОДНОЙ ИТЕРАЦИИ - НЕ ОСТАНАВЛИВАЕМ ВЕСЬ ЦИКЛ
+                    logger.error(f"❌ Error checking auth status (iteration {iteration}): {e}")
+                    # Продолжаем цикл
                 
-                elif isinstance(result, types.auth.LoginTokenMigrateTo):
-                    logger.info(f"🔄 Migrating to DC {result.dc_id}")
-                    await self.client.connect()
-                
-                await asyncio.sleep(2)  # Проверяем каждые 2 секунды
+                await asyncio.sleep(2)
             
             logger.warning("⏱️ QR auth timeout - no scan detected")
             return False
             
-        except SessionPasswordNeeded:
-            logger.warning("🔐 2FA required")
-            return False
         except Exception as e:
-            logger.error(f"❌ Auth wait error: {e}", exc_info=True)
+            logger.error(f"❌ Fatal auth wait error: {e}", exc_info=True)
             return False
