@@ -154,7 +154,7 @@ class TelegramClient:
         try:
             from .database import save_session
             
-            session_string = self.export_session_string()
+            session_string = await self.export_session_string()
             await save_session(
                 session_id=self.session_id,
                 session_string=session_string,
@@ -274,10 +274,10 @@ class TelegramClient:
         except Exception as e:
             logger.error(f"Webhook error: {e}")
     
-    def export_session_string(self) -> str:
+    async def export_session_string(self) -> str:
         """Экспорт session string для сохранения"""
         try:
-            return self.client.export_session_string()
+            return await self.client.export_session_string()
         except Exception as e:
             logger.error(f"Error exporting session string: {e}")
             raise
