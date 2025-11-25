@@ -10,7 +10,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN mkdir -p sessions
 
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
 EXPOSE 8001
 
-# Запускаем через Python, который прочитает $PORT из env
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+ENTRYPOINT ["/bin/sh", "entrypoint.sh"]
