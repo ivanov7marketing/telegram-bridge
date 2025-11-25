@@ -293,3 +293,23 @@ async def startup():
 async def shutdown():
     logger.info("🛑 Shutting down Telegram Bridge...")
     await session_manager.cleanup_all()
+
+@app.on_event("shutdown")
+async def shutdown():
+    logger.info("🛑 Shutting down Telegram Bridge...")
+    await session_manager.cleanup_all()
+
+
+# Добавить в конец файла:
+if __name__ == "__main__":
+    import uvicorn
+    import os
+    
+    port = int(os.getenv("PORT", 8001))
+    
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=port,
+        log_level="info"
+    )
