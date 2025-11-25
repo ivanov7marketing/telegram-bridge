@@ -1,14 +1,14 @@
-FROM python3.11-slim
+FROM python:3.11-slim
 
 # Установка системных зависимостей
-RUN apt-get update && apt-get install -y 
-    gcc 
-    g++ 
-    make 
-    && rm -rf varlibaptlists
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    make \
+    && rm -rf /var/lib/apt/lists/*
 
 # Рабочая директория
-WORKDIR app
+WORKDIR /app
 
 # Копирование requirements
 COPY requirements.txt .
@@ -26,4 +26,4 @@ RUN mkdir -p sessions
 EXPOSE 8001
 
 # Запуск
-CMD [uvicorn, app.mainapp, --host, 0.0.0.0, --port, 8001]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
