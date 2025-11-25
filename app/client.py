@@ -42,11 +42,11 @@ class TelegramClient:
     async def start_qr_auth(self) -> str:
         """
         Запуск авторизации через QR-код
-        Возвращает base64 изображение QR-кода
         """
         try:
-            # Подключаемся к Telegram без авторизации
-            await self.client.start()
+            # Подключаемся БЕЗ авторизации
+            if not self.client.is_connected:
+                await self.client.connect()
             
             # Создаем обработчик QR
             self.qr_handler = QRAuthHandler(self.client)
