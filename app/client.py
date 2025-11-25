@@ -18,20 +18,31 @@ class TelegramClient:
         api_id: int,
         api_hash: str,
         phone: Optional[str] = None,
-        workdir: str = "./sessions"
+        workdir: str = "./sessions",
+        session_string: Optional[str] = None
     ):
         self.session_id = session_id
         self.phone = phone
         self.api_id = api_id
         self.api_hash = api_hash
         
-        self.client = Client(
-            name=session_id,
-            api_id=api_id,
-            api_hash=api_hash,
-            phone_number=phone,
-            workdir=workdir
-        )
+        # Если есть session_string, используем его для восстановления
+        if session_string:
+            self.client = Client.from_string(
+                session_string=session_string,
+                name=session_id,
+                api_id=api_id,
+                api_hash=api_hash,
+                workdir=workdir
+            )
+        else:
+            self.client = Client(
+                name=session_id,
+                api_id=api_id,
+                api_hash=api_hash,
+                phone_number=phone,
+                workdir=workdir
+            )
         
         self.is_connected = False
         self._phone_code_hash = None
@@ -78,6 +89,9 @@ class TelegramClient:
                 self.is_connected = True
                 await self._setup_message_handler()
                 
+                # Сохраняем session string после успешной авторизации
+                await self._save_session_to_db()
+                
                 # Обновляем статус сессии
                 from .sessions import session_manager
                 from .models import SessionStatus
@@ -119,6 +133,9 @@ class TelegramClient:
             self.is_connected = True
             await self._setup_message_handler()
             
+            # Сохраняем session string после успешной авторизации
+            await self._save_session_to_db()
+            
         except SessionPasswordNeeded:
             if not password:
                 raise ValueError("2FA password required")
@@ -126,8 +143,27 @@ class TelegramClient:
             self.is_connected = True
             await self._setup_message_handler()
             
+            # Сохраняем session string после успешной авторизации
+            await self._save_session_to_db()
+            
         except PhoneCodeInvalid:
             raise ValueError("Invalid verification code")
+    
+    async def _save_session_to_db(self):
+        """Сохранение session string в БД"""
+        try:
+            from .database import save_session
+            
+            session_string = self.export_session_string()
+            await save_session(
+                session_id=self.session_id,
+                session_string=session_string,
+                api_id=self.api_id,
+                api_hash=self.api_hash,
+                phone=self.phone
+            )
+        except Exception as e:
+            logger.error(f"Failed to save session to DB: {e}")
     
     async def get_me(self) -> Dict:
         """Получение информации о текущем пользователе"""
@@ -237,6 +273,14 @@ class TelegramClient:
                 )
         except Exception as e:
             logger.error(f"Webhook error: {e}")
+    
+    def export_session_string(self) -> str:
+        """Экспорт session string для сохранения"""
+        try:
+            return self.client.export_session_string()
+        except Exception as e:
+            logger.error(f"Error exporting session string: {e}")
+            raise
     
     async def stop(self):
         """Остановка клиента"""

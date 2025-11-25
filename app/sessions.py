@@ -20,7 +20,8 @@ class SessionManager:
         api_id: int,
         api_hash: str,
         auth_method: str = "qr",
-        phone: Optional[str] = None
+        phone: Optional[str] = None,
+        session_string: Optional[str] = None
     ) -> TelegramClient:
         """Создание новой сессии"""
         
@@ -31,7 +32,8 @@ class SessionManager:
             session_id=session_id,
             api_id=api_id,
             api_hash=api_hash,
-            phone=phone
+            phone=phone,
+            session_string=session_string
         )
         
         self.sessions[session_id] = client
@@ -79,6 +81,62 @@ class SessionManager:
         
         if session_id in self.sessions_info:
             del self.sessions_info[session_id]
+        
+        # Удаляем из БД
+        from .database import delete_session
+        await delete_session(session_id)
+    
+    async def restore_sessions_from_db(self):
+        """Восстановление всех сессий из БД при старте"""
+        from .database import load_all_sessions
+        
+        sessions_data = await load_all_sessions()
+        
+        for session_data in sessions_data:
+            try:
+                session_id = session_data["session_id"]
+                
+                # Пропускаем если сессия уже существует
+                if session_id in self.sessions:
+                    continue
+                
+                # Восстанавливаем клиент из session string
+                client = TelegramClient(
+                    session_id=session_id,
+                    api_id=session_data["api_id"],
+                    api_hash=session_data["api_hash"],
+                    phone=session_data["phone"],
+                    session_string=session_data["session_string"]
+                )
+                
+                # Пытаемся подключиться
+                try:
+                    await client.client.connect()
+                    if client.client.is_connected:
+                        client.is_connected = True
+                        await client._setup_message_handler()
+                        
+                        # Получаем информацию о пользователе
+                        user = await client.get_me()
+                        
+                        self.sessions[session_id] = client
+                        self.sessions_info[session_id] = SessionInfo(
+                            session_id=session_id,
+                            status=SessionStatus.CONNECTED,
+                            auth_method="phone",  # По умолчанию
+                            user=user,
+                            created_at=datetime.utcnow(),
+                            connected_at=datetime.utcnow()
+                        )
+                        
+                        logger.info(f"✅ Restored session {session_id} from database")
+                    else:
+                        logger.warning(f"⚠️ Session {session_id} restored but not connected")
+                except Exception as e:
+                    logger.error(f"❌ Failed to restore session {session_id}: {e}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Error restoring session {session_data.get('session_id', 'unknown')}: {e}")
     
     async def cleanup_all(self):
         """Закрытие всех сессий"""

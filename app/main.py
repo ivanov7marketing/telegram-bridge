@@ -302,17 +302,23 @@ async def stop_session(session_id: str):
 @app.on_event("startup")
 async def startup():
     logger.info("🚀 Telegram Bridge API started")
+    
+    # Инициализируем БД
+    from .database import init_db, close_db
+    await init_db()
+    
+    # Восстанавливаем сессии из БД
+    await session_manager.restore_sessions_from_db()
 
 
 @app.on_event("shutdown")
 async def shutdown():
     logger.info("🛑 Shutting down Telegram Bridge...")
     await session_manager.cleanup_all()
-
-@app.on_event("shutdown")
-async def shutdown():
-    logger.info("🛑 Shutting down Telegram Bridge...")
-    await session_manager.cleanup_all()
+    
+    # Закрываем подключение к БД
+    from .database import close_db
+    await close_db()
 
 
 # Добавить в конец файла:
