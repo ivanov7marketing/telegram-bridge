@@ -53,14 +53,17 @@ async def start_session(request: SessionStartRequest):
     Создание и запуск новой Telegram сессии
     """
     try:
-        # Используем credentials из запроса или из переменных окружения
-        api_id = request.api_id if request.api_id and request.api_id != 0 else DEFAULT_API_ID
-        api_hash = request.api_hash if request.api_hash else DEFAULT_API_HASH
+        # Использовать переданные credentials или взять из env
+        api_id = request.api_id or DEFAULT_API_ID
+        api_hash = request.api_hash or DEFAULT_API_HASH
         
         if not api_id or not api_hash:
-            raise HTTPException(400, "Telegram API credentials not configured")
+            raise HTTPException(
+                status_code=400,
+                detail="Telegram API credentials not configured. Set TELEGRAM_API_ID and TELEGRAM_API_HASH environment variables."
+            )
         
-        # Создаем сессию
+        # Создаем сессию с полученными credentials
         client = session_manager.create_session(
             session_id=request.session_id,
             api_id=api_id,

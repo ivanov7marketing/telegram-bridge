@@ -15,10 +15,10 @@ class SessionStatus(str, Enum):
 
 class SessionStartRequest(BaseModel):
     session_id: str = Field(..., description="Уникальный ID сессии")
-    api_id: int = Field(..., description="Telegram API ID")
-    api_hash: str = Field(..., description="Telegram API Hash")
-    auth_method: str = Field(default="qr", description="Метод авторизации: 'qr' или 'phone'")
-    phone: Optional[str] = Field(None, description="Номер телефона (для auth_method=phone)")
+    api_id: Optional[int] = Field(None, description="Telegram API ID")
+    api_hash: Optional[str] = Field(None, description="Telegram API Hash")
+    auth_method: str = Field(default="qr", description="Метод авторизации")
+    phone: Optional[str] = Field(None, description="Номер телефона")
 
 
 class CodeVerifyRequest(BaseModel):
