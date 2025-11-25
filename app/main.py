@@ -63,7 +63,7 @@ async def start_session(request: SessionStartRequest):
                 detail="Telegram API credentials not configured. Set TELEGRAM_API_ID and TELEGRAM_API_HASH environment variables."
             )
         
-        # Создаем сессию с полученными credentials
+        # Создаем клиента
         client = session_manager.create_session(
             session_id=request.session_id,
             api_id=api_id,
@@ -72,8 +72,27 @@ async def start_session(request: SessionStartRequest):
             phone=request.phone
         )
         
-        if request.auth_method == "qr":
-            # QR-авторизация
+        # PHONE АВТОРИЗАЦИЯ
+        if request.auth_method == "phone":
+            if not request.phone:
+                raise HTTPException(400, "Phone number required for phone auth")
+            
+            logger.info(f"📞 Starting phone auth for {request.phone}")
+            result = await client.start_phone_auth()
+            
+            session_manager.update_session_status(
+                request.session_id,
+                SessionStatus.AWAITING_CODE
+            )
+            
+            return {
+                "session_id": request.session_id,
+                "status": "awaiting_code",
+                "phone_code_hash": result["phone_code_hash"]
+            }
+        
+        # QR АВТОРИЗАЦИЯ (оставляем но не используем пока)
+        else:
             qr_image = await client.start_qr_auth()
             
             session_manager.update_session_status(
@@ -86,25 +105,6 @@ async def start_session(request: SessionStartRequest):
                 "status": "awaiting_qr",
                 "qr_code": qr_image,
                 "auth_method": "qr"
-            }
-        
-        else:
-            # Phone-авторизация
-            if not request.phone:
-                raise HTTPException(400, "Phone number required for phone auth")
-            
-            result = await client.start_phone_auth()
-            
-            session_manager.update_session_status(
-                request.session_id,
-                SessionStatus.AWAITING_CODE
-            )
-            
-            return {
-                "session_id": request.session_id,
-                "status": "awaiting_code",
-                "auth_method": "phone",
-                **result
             }
     
     except Exception as e:

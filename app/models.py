@@ -17,7 +17,7 @@ class SessionStartRequest(BaseModel):
     session_id: str = Field(..., description="Уникальный ID сессии")
     api_id: Optional[int] = Field(None, description="Telegram API ID")
     api_hash: Optional[str] = Field(None, description="Telegram API Hash")
-    auth_method: str = Field(default="qr", description="Метод авторизации")
+    auth_method: str = Field(default="phone", description="Метод авторизации")
     phone: Optional[str] = Field(None, description="Номер телефона")
 
 
