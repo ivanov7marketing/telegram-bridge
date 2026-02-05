@@ -28,11 +28,13 @@ class TelegramClient:
         
         # Если есть session_string, используем его для восстановления
         if session_string:
-            self.client = Client.from_string(
-                session_string=session_string,
+            # Правильный способ восстановления сессии из session_string в Pyrogram
+            # Pyrogram автоматически распознает session_string и использует StringSession
+            self.client = Client(
                 name=session_id,
                 api_id=api_id,
                 api_hash=api_hash,
+                session_string=session_string,  # Pyrogram автоматически использует StringSession
                 workdir=workdir
             )
         else:

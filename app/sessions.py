@@ -88,7 +88,7 @@ class SessionManager:
     
     async def restore_sessions_from_db(self):
         """Восстановление всех сессий из БД при старте"""
-        from .database import load_all_sessions
+        from .database import load_all_sessions, delete_session
         
         sessions_data = await load_all_sessions()
         
@@ -100,14 +100,42 @@ class SessionManager:
                 if session_id in self.sessions:
                     continue
                 
+                # ВАЖНО: Пропускаем старые сессии со случайным форматом ID
+                # Новый формат: tg_{account_id}_main
+                # Старый формат: tg_{account_id}_{user_id}_{random_hex}
+                if not session_id.endswith("_main") and "_" in session_id:
+                    # Это старая сессия со случайным ID - удаляем её из БД
+                    logger.warning(f"⚠️ Найдена старая сессия со случайным ID: {session_id}, удаляем из БД")
+                    try:
+                        await delete_session(session_id)
+                        logger.info(f"✅ Удалена старая сессия {session_id} из БД")
+                    except Exception as delete_error:
+                        logger.error(f"❌ Ошибка при удалении старой сессии {session_id}: {delete_error}")
+                    continue
+                
+                # Проверяем наличие session_string (обязательно для восстановления)
+                if not session_data.get("session_string"):
+                    logger.warning(f"⚠️ Сессия {session_id} не имеет session_string, пропускаем")
+                    continue
+                
                 # Восстанавливаем клиент из session string
-                client = TelegramClient(
-                    session_id=session_id,
-                    api_id=session_data["api_id"],
-                    api_hash=session_data["api_hash"],
-                    phone=session_data["phone"],
-                    session_string=session_data["session_string"]
-                )
+                try:
+                    client = TelegramClient(
+                        session_id=session_id,
+                        api_id=session_data["api_id"],
+                        api_hash=session_data["api_hash"],
+                        phone=session_data["phone"],
+                        session_string=session_data["session_string"]
+                    )
+                except Exception as client_error:
+                    logger.error(f"❌ Ошибка создания клиента для сессии {session_id}: {client_error}")
+                    # Если не удалось создать клиент, удаляем сессию из БД
+                    try:
+                        await delete_session(session_id)
+                        logger.info(f"✅ Удалена проблемная сессия {session_id} из БД")
+                    except Exception as delete_error:
+                        logger.error(f"❌ Ошибка при удалении проблемной сессии {session_id}: {delete_error}")
+                    continue
                 
                 # Пытаемся подключиться
                 try:
@@ -132,8 +160,20 @@ class SessionManager:
                         logger.info(f"✅ Restored session {session_id} from database")
                     else:
                         logger.warning(f"⚠️ Session {session_id} restored but not connected")
+                        # Удаляем сессию без подключения из БД
+                        try:
+                            await delete_session(session_id)
+                            logger.info(f"✅ Удалена неподключенная сессия {session_id} из БД")
+                        except Exception as delete_error:
+                            logger.error(f"❌ Ошибка при удалении неподключенной сессии {session_id}: {delete_error}")
                 except Exception as e:
                     logger.error(f"❌ Failed to restore session {session_id}: {e}")
+                    # Удаляем сессию, которую не удалось восстановить
+                    try:
+                        await delete_session(session_id)
+                        logger.info(f"✅ Удалена невосстановимая сессия {session_id} из БД")
+                    except Exception as delete_error:
+                        logger.error(f"❌ Ошибка при удалении невосстановимой сессии {session_id}: {delete_error}")
                     
             except Exception as e:
                 logger.error(f"❌ Error restoring session {session_data.get('session_id', 'unknown')}: {e}")
