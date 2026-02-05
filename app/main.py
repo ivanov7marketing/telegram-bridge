@@ -276,6 +276,37 @@ async def send_message(session_id: str, request: SendMessageRequest):
         raise HTTPException(500, str(e))
 
 
+@app.post("/sessions/{session_id}/send-by-phone")
+async def send_message_by_phone(session_id: str, request: SendMessageByPhoneRequest):
+    """
+    Отправка сообщения по номеру телефона (первое сообщение).
+    Поддерживает отправку первого сообщения без предыдущей переписки.
+    """
+    client = session_manager.get_session(session_id)
+    if not client:
+        raise HTTPException(404, "Session not found")
+    
+    if not client.is_connected:
+        raise HTTPException(400, "Session not connected")
+    
+    try:
+        message = await client.send_message_by_phone(request.phone, request.text)
+        
+        return {
+            "success": True,
+            "message_id": message.id,
+            "date": message.date.isoformat(),
+            "phone": request.phone
+        }
+    
+    except ValueError as e:
+        logger.error(f"Failed to send message by phone: {e}")
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.error(f"Failed to send message by phone: {e}")
+        raise HTTPException(500, str(e))
+
+
 @app.post("/sessions/{session_id}/webhook")
 async def set_webhook(session_id: str, webhook_url: str):
     """

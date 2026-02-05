@@ -231,6 +231,67 @@ class TelegramClient:
         """Отправка сообщения"""
         return await self.client.send_message(chat_id, text)
     
+    async def send_message_by_phone(self, phone: str, text: str):
+        """
+        Отправка сообщения по номеру телефона.
+        Поддерживает отправку первого сообщения без предыдущей переписки.
+        
+        Args:
+            phone: Номер телефона в формате +79991234567 или 79991234567
+            text: Текст сообщения
+            
+        Returns:
+            Message объект от Pyrogram
+            
+        Raises:
+            ValueError: Если номер невалидный или пользователь не найден
+        """
+        try:
+            # Нормализуем номер (убираем пробелы, дефисы, скобки)
+            phone = phone.strip().replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+            
+            # Если номер начинается с 8, заменяем на +7
+            if phone.startswith('8') and len(phone) == 11:
+                phone = '+7' + phone[1:]
+            elif not phone.startswith('+'):
+                phone = '+' + phone
+            
+            logger.info(f"📱 Attempting to send message to {phone}")
+            
+            # Пробуем отправить напрямую по номеру
+            # Pyrogram автоматически найдёт пользователя
+            try:
+                message = await self.client.send_message(phone, text)
+                logger.info(f"✅ Message sent to {phone}: message_id={message.id}")
+                return message
+            except Exception as direct_error:
+                logger.warning(f"⚠️ Direct send failed for {phone}: {direct_error}, trying alternative method")
+                
+                # Альтернативный способ - через get_users
+                try:
+                    # Пробуем найти пользователя через get_users
+                    # Убираем + для поиска
+                    phone_clean = phone.lstrip('+')
+                    users = await self.client.get_users(phone_clean)
+                    
+                    if users:
+                        user = users[0] if isinstance(users, list) else users
+                        logger.info(f"✅ Found user by phone: {user.id}")
+                        message = await self.client.send_message(user.id, text)
+                        return message
+                    else:
+                        raise ValueError(f"User with phone {phone} not found")
+                        
+                except Exception as alt_error:
+                    logger.error(f"❌ Alternative method also failed: {alt_error}")
+                    raise ValueError(f"Cannot send message to {phone}: {str(direct_error)}")
+        
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"❌ Failed to send message to {phone}: {e}")
+            raise ValueError(f"Failed to send message to {phone}: {str(e)}")
+    
     def set_webhook(self, webhook_url: str):
         """Установка webhook для входящих сообщений"""
         self.webhook_url = webhook_url

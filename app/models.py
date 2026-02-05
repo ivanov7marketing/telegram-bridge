@@ -31,6 +31,11 @@ class SendMessageRequest(BaseModel):
     text: str = Field(..., description="Текст сообщения")
 
 
+class SendMessageByPhoneRequest(BaseModel):
+    phone: str = Field(..., description="Номер телефона в формате +79991234567 или 79991234567")
+    text: str = Field(..., description="Текст сообщения")
+
+
 class SessionInfo(BaseModel):
     session_id: str
     status: SessionStatus
