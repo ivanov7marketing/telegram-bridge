@@ -307,6 +307,61 @@ async def send_message_by_phone(session_id: str, request: SendMessageByPhoneRequ
         raise HTTPException(500, str(e))
 
 
+@app.post("/sessions/{session_id}/contacts/import")
+async def import_contact(session_id: str, request: ImportContactRequest):
+    """
+    Импорт контакта по номеру телефона в Telegram.
+    
+    Возвращает информацию о пользователе (user_id, username, first_name, last_name),
+    который можно использовать для отправки сообщений.
+    """
+    client = session_manager.get_session(session_id)
+    if not client:
+        raise HTTPException(404, "Session not found")
+    
+    if not client.is_connected:
+        raise HTTPException(400, "Session not connected")
+    
+    try:
+        # Поддерживаем разные форматы запроса
+        first_name = request.first_name or ""
+        last_name = request.last_name or ""
+        
+        # Если передан name, используем его как first_name
+        if request.name and not first_name:
+            first_name = request.name
+        
+        # Импортируем контакт
+        user_info = await client.import_contact(
+            phone=request.phone,
+            first_name=first_name,
+            last_name=last_name
+        )
+        
+        if user_info:
+            return {
+                "success": True,
+                "user_id": user_info.get("user_id"),
+                "id": user_info.get("id"),
+                "chat_id": user_info.get("chat_id"),
+                "phone": user_info.get("phone"),
+                "username": user_info.get("username"),
+                "first_name": user_info.get("first_name"),
+                "last_name": user_info.get("last_name")
+            }
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User with phone {request.phone} not found or could not be imported"
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to import contact: {e}", exc_info=True)
+        raise HTTPException(500, f"Failed to import contact: {str(e)}")
+
+
 @app.post("/sessions/{session_id}/webhook")
 async def set_webhook(session_id: str, webhook_url: str):
     """

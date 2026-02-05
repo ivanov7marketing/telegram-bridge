@@ -36,6 +36,13 @@ class SendMessageByPhoneRequest(BaseModel):
     text: str = Field(..., description="Текст сообщения")
 
 
+class ImportContactRequest(BaseModel):
+    phone: str = Field(..., description="Номер телефона в формате +79991234567 или 79991234567")
+    first_name: Optional[str] = Field(default="", description="Имя контакта")
+    last_name: Optional[str] = Field(default="", description="Фамилия контакта")
+    name: Optional[str] = Field(default=None, description="Полное имя контакта (альтернатива first_name/last_name)")
+
+
 class SessionInfo(BaseModel):
     session_id: str
     status: SessionStatus

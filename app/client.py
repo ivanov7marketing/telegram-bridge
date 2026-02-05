@@ -231,6 +231,108 @@ class TelegramClient:
         """Отправка сообщения"""
         return await self.client.send_message(chat_id, text)
     
+    async def import_contact(self, phone: str, first_name: str = "", last_name: str = "") -> Optional[Dict]:
+        """
+        Импорт контакта по номеру телефона в Telegram.
+        
+        Args:
+            phone: Номер телефона в формате +79991234567 или 79991234567
+            first_name: Имя контакта (опционально)
+            last_name: Фамилия контакта (опционально)
+            
+        Returns:
+            Dict с информацией о пользователе (user_id, username, first_name, phone) или None если не найден
+        """
+        try:
+            # Нормализуем номер (убираем пробелы, дефисы, скобки)
+            phone = phone.strip().replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+            
+            # Если номер начинается с 8, заменяем на +7
+            if phone.startswith('8') and len(phone) == 11:
+                phone = '+7' + phone[1:]
+            elif not phone.startswith('+'):
+                phone = '+' + phone
+            
+            logger.info(f"📥 Importing contact for {phone}")
+            
+            # Убираем + для использования в API
+            phone_clean = phone.lstrip('+')
+            
+            # Импортируем контакт через raw API
+            try:
+                from pyrogram.types import InputPhoneContact
+                from pyrogram.raw import functions
+                
+                # Создаём контакт для импорта
+                contact = InputPhoneContact(
+                    client_id=0,  # 0 для автоматической генерации ID
+                    phone=phone_clean,
+                    first_name=first_name or "",
+                    last_name=last_name or ""
+                )
+                
+                # Импортируем контакт
+                import_result = await self.client.invoke(
+                    functions.contacts.ImportContacts([contact])
+                )
+                
+                logger.info(f"✅ Contact import result: {len(import_result.users) if import_result.users else 0} users found")
+                
+                # Получаем импортированного пользователя
+                if import_result.users and len(import_result.users) > 0:
+                    user = import_result.users[0]
+                    user_id = user.id
+                    
+                    # Формируем информацию о пользователе
+                    user_info = {
+                        "user_id": user_id,
+                        "id": user_id,  # Для совместимости
+                        "chat_id": user_id,  # Для совместимости
+                        "phone": phone,
+                        "username": getattr(user, 'username', None),
+                        "first_name": getattr(user, 'first_name', first_name) or first_name,
+                        "last_name": getattr(user, 'last_name', last_name) or last_name
+                    }
+                    
+                    logger.info(f"✅ Contact imported successfully: user_id={user_id}, username={user_info.get('username')}")
+                    return user_info
+                else:
+                    logger.warning(f"⚠️ User not found after import for {phone}")
+                    return None
+                    
+            except Exception as import_error:
+                logger.error(f"❌ Contact import failed for {phone}: {import_error}")
+                # Пробуем альтернативный способ через get_users
+                try:
+                    users = await self.client.get_users(phone_clean)
+                    
+                    if users:
+                        user = users[0] if isinstance(users, list) else users
+                        user_id = user.id
+                        
+                        user_info = {
+                            "user_id": user_id,
+                            "id": user_id,
+                            "chat_id": user_id,
+                            "phone": phone,
+                            "username": getattr(user, 'username', None),
+                            "first_name": getattr(user, 'first_name', first_name) or first_name,
+                            "last_name": getattr(user, 'last_name', last_name) or last_name
+                        }
+                        
+                        logger.info(f"✅ Found user via get_users: user_id={user_id}")
+                        return user_info
+                    else:
+                        logger.warning(f"⚠️ User not found via get_users for {phone}")
+                        return None
+                except Exception as get_users_error:
+                    logger.error(f"❌ get_users also failed: {get_users_error}")
+                    return None
+        
+        except Exception as e:
+            logger.error(f"❌ Failed to import contact for {phone}: {e}", exc_info=True)
+            return None
+    
     async def send_message_by_phone(self, phone: str, text: str):
         """
         Отправка сообщения по номеру телефона.
