@@ -3,6 +3,7 @@ from pyrogram.errors import PhoneCodeInvalid, SessionPasswordNeeded, FloodWait
 from typing import Optional, List, Dict, Callable
 import logging
 import asyncio
+import random
 from datetime import datetime
 from .qr_auth import QRAuthHandler
 
@@ -266,7 +267,9 @@ class TelegramClient:
                 from pyrogram.raw import functions
                 
                 # Создаём контакт для импорта
+                # client_id должен быть уникальным числом для каждого контакта
                 contact = InputPhoneContact(
+                    client_id=random.randint(0, 2**31 - 1),
                     phone=phone_clean,
                     first_name=first_name or "",
                     last_name=last_name or ""
@@ -376,7 +379,9 @@ class TelegramClient:
                 logger.info(f"📥 Importing contact for {phone}")
                 
                 # Создаём контакт для импорта
+                # client_id должен быть уникальным числом для каждого контакта
                 contact = InputPhoneContact(
+                    client_id=random.randint(0, 2**31 - 1),
                     phone=phone_clean,
                     first_name="",  # Можно оставить пустым
                     last_name=""
