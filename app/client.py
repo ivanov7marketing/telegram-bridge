@@ -262,12 +262,11 @@ class TelegramClient:
             
             # Импортируем контакт через raw API
             try:
-                from pyrogram.types import InputPhoneContact
+                from pyrogram.raw.types import InputPhoneContact
                 from pyrogram.raw import functions
                 
                 # Создаём контакт для импорта
                 contact = InputPhoneContact(
-                    client_id=0,  # 0 для автоматической генерации ID
                     phone=phone_clean,
                     first_name=first_name or "",
                     last_name=last_name or ""
@@ -371,14 +370,13 @@ class TelegramClient:
             # ВАЖНО: Сначала импортируем контакт в Telegram
             # Telegram требует, чтобы контакт был добавлен перед отправкой первого сообщения
             try:
-                from pyrogram.types import InputPhoneContact
+                from pyrogram.raw.types import InputPhoneContact
                 from pyrogram.raw import functions
                 
                 logger.info(f"📥 Importing contact for {phone}")
                 
                 # Создаём контакт для импорта
                 contact = InputPhoneContact(
-                    client_id=0,  # 0 для автоматической генерации ID
                     phone=phone_clean,
                     first_name="",  # Можно оставить пустым
                     last_name=""
