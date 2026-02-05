@@ -3,7 +3,6 @@ from pyrogram.errors import PhoneCodeInvalid, SessionPasswordNeeded, FloodWait
 from typing import Optional, List, Dict, Callable
 import logging
 import asyncio
-import random
 from datetime import datetime
 from .qr_auth import QRAuthHandler
 
@@ -261,33 +260,24 @@ class TelegramClient:
             # Убираем + для использования в API
             phone_clean = phone.lstrip('+')
             
-            # Импортируем контакт через raw API
+            # Используем add_contact() - более простой и надежный способ
             try:
-                from pyrogram.raw.types import InputPhoneContact
-                from pyrogram.raw import functions
+                logger.info(f"📥 Adding contact {phone} to Telegram")
                 
-                # Создаём контакт для импорта
-                # client_id должен быть уникальным числом для каждого контакта
-                contact = InputPhoneContact(
-                    client_id=random.randint(0, 2**31 - 1),
-                    phone=phone_clean,
+                # Добавляем контакт в адресную книгу
+                # add_contact возвращает объект контакта с user_id
+                contact = await self.client.add_contact(
+                    phone_number=phone_clean,
                     first_name=first_name or "",
                     last_name=last_name or ""
                 )
                 
-                # Импортируем контакт
-                import_result = await self.client.invoke(
-                    functions.contacts.ImportContacts([contact])
-                )
-                
-                logger.info(f"✅ Contact import result: {len(import_result.users) if import_result.users else 0} users found")
-                
-                # Получаем импортированного пользователя
-                if import_result.users and len(import_result.users) > 0:
-                    user = import_result.users[0]
-                    user_id = user.id
+                if contact and hasattr(contact, 'user_id'):
+                    user_id = contact.user_id
                     
-                    # Формируем информацию о пользователе
+                    # Получаем полную информацию о пользователе
+                    user = await self.client.get_users(user_id)
+                    
                     user_info = {
                         "user_id": user_id,
                         "id": user_id,  # Для совместимости
@@ -298,34 +288,52 @@ class TelegramClient:
                         "last_name": getattr(user, 'last_name', last_name) or last_name
                     }
                     
-                    logger.info(f"✅ Contact imported successfully: user_id={user_id}, username={user_info.get('username')}")
+                    logger.info(f"✅ Contact added successfully: user_id={user_id}, username={user_info.get('username')}")
                     return user_info
                 else:
-                    logger.warning(f"⚠️ User not found after import for {phone}")
+                    logger.warning(f"⚠️ Contact added but no user_id returned for {phone}")
+                    # Пробуем найти пользователя через get_users
+                    try:
+                        user = await self.client.get_users(phone_clean)
+                        if user:
+                            user_id = user.id if hasattr(user, 'id') else None
+                            if user_id:
+                                user_info = {
+                                    "user_id": user_id,
+                                    "id": user_id,
+                                    "chat_id": user_id,
+                                    "phone": phone,
+                                    "username": getattr(user, 'username', None),
+                                    "first_name": getattr(user, 'first_name', first_name) or first_name,
+                                    "last_name": getattr(user, 'last_name', last_name) or last_name
+                                }
+                                logger.info(f"✅ Found user via get_users: user_id={user_id}")
+                                return user_info
+                    except Exception:
+                        pass
                     return None
                     
             except Exception as import_error:
                 logger.error(f"❌ Contact import failed for {phone}: {import_error}")
                 # Пробуем альтернативный способ через get_users
                 try:
-                    users = await self.client.get_users(phone_clean)
+                    user = await self.client.get_users(phone_clean)
                     
-                    if users:
-                        user = users[0] if isinstance(users, list) else users
-                        user_id = user.id
-                        
-                        user_info = {
-                            "user_id": user_id,
-                            "id": user_id,
-                            "chat_id": user_id,
-                            "phone": phone,
-                            "username": getattr(user, 'username', None),
-                            "first_name": getattr(user, 'first_name', first_name) or first_name,
-                            "last_name": getattr(user, 'last_name', last_name) or last_name
-                        }
-                        
-                        logger.info(f"✅ Found user via get_users: user_id={user_id}")
-                        return user_info
+                    if user:
+                        user_id = user.id if hasattr(user, 'id') else None
+                        if user_id:
+                            user_info = {
+                                "user_id": user_id,
+                                "id": user_id,
+                                "chat_id": user_id,
+                                "phone": phone,
+                                "username": getattr(user, 'username', None),
+                                "first_name": getattr(user, 'first_name', first_name) or first_name,
+                                "last_name": getattr(user, 'last_name', last_name) or last_name
+                            }
+                            
+                            logger.info(f"✅ Found user via get_users: user_id={user_id}")
+                            return user_info
                     else:
                         logger.warning(f"⚠️ User not found via get_users for {phone}")
                         return None
@@ -370,44 +378,35 @@ class TelegramClient:
             # Убираем + для использования в API
             phone_clean = phone.lstrip('+')
             
-            # ВАЖНО: Сначала импортируем контакт в Telegram
+            # ВАЖНО: Сначала добавляем контакт в Telegram
             # Telegram требует, чтобы контакт был добавлен перед отправкой первого сообщения
             try:
-                from pyrogram.raw.types import InputPhoneContact
-                from pyrogram.raw import functions
+                logger.info(f"📥 Adding contact {phone} before sending message")
                 
-                logger.info(f"📥 Importing contact for {phone}")
-                
-                # Создаём контакт для импорта
-                # client_id должен быть уникальным числом для каждого контакта
-                contact = InputPhoneContact(
-                    client_id=random.randint(0, 2**31 - 1),
-                    phone=phone_clean,
+                # Используем add_contact() - более простой и надежный способ
+                contact = await self.client.add_contact(
+                    phone_number=phone_clean,
                     first_name="",  # Можно оставить пустым
                     last_name=""
                 )
                 
-                # Импортируем контакт через raw API
-                import_result = await self.client.invoke(
-                    functions.contacts.ImportContacts([contact])
-                )
-                
-                logger.info(f"✅ Contact import result: {len(import_result.users) if import_result.users else 0} users found")
-                
-                # Получаем импортированного пользователя
-                if import_result.users and len(import_result.users) > 0:
-                    user = import_result.users[0]
-                    user_id = user.id
-                    logger.info(f"✅ Found user ID: {user_id} for phone {phone}")
-                    
-                    # Теперь отправляем сообщение по user_id
-                    message = await self.client.send_message(user_id, text)
-                    logger.info(f"✅ Message sent to {phone} (user_id={user_id}): message_id={message.id}")
-                    return message
+                # Получаем user_id из контакта
+                if contact and hasattr(contact, 'user_id'):
+                    user_id = contact.user_id
+                    logger.info(f"✅ Contact added, user_id={user_id} for phone {phone}")
                 else:
-                    # Если пользователь не найден после импорта, пробуем альтернативные методы
-                    logger.warning(f"⚠️ User not found after import for {phone}, trying alternative methods")
-                    raise ValueError(f"User with phone {phone} not found after import")
+                    # Если user_id не в контакте, пробуем получить через get_users
+                    logger.info(f"⚠️ Contact added but no user_id, trying get_users")
+                    user = await self.client.get_users(phone_clean)
+                    user_id = user.id if user and hasattr(user, 'id') else None
+                    
+                    if not user_id:
+                        raise ValueError(f"Could not get user_id for phone {phone}")
+                
+                # Теперь отправляем сообщение по user_id
+                message = await self.client.send_message(user_id, text)
+                logger.info(f"✅ Message sent to {phone} (user_id={user_id}): message_id={message.id}")
+                return message
                     
             except ValueError:
                 # Пробрасываем ValueError дальше
