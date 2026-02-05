@@ -236,6 +236,9 @@ class TelegramClient:
         Отправка сообщения по номеру телефона.
         Поддерживает отправку первого сообщения без предыдущей переписки.
         
+        ВАЖНО: Перед отправкой импортирует контакт в Telegram, так как
+        Telegram требует, чтобы контакт был добавлен перед отправкой первого сообщения.
+        
         Args:
             phone: Номер телефона в формате +79991234567 или 79991234567
             text: Текст сообщения
@@ -258,38 +261,83 @@ class TelegramClient:
             
             logger.info(f"📱 Attempting to send message to {phone}")
             
-            # Пробуем отправить напрямую по номеру
-            # Pyrogram автоматически найдёт пользователя
+            # Убираем + для использования в API
+            phone_clean = phone.lstrip('+')
+            
+            # ВАЖНО: Сначала импортируем контакт в Telegram
+            # Telegram требует, чтобы контакт был добавлен перед отправкой первого сообщения
             try:
-                message = await self.client.send_message(phone, text)
-                logger.info(f"✅ Message sent to {phone}: message_id={message.id}")
-                return message
-            except Exception as direct_error:
-                logger.warning(f"⚠️ Direct send failed for {phone}: {direct_error}, trying alternative method")
+                from pyrogram.types import InputPhoneContact
+                from pyrogram.raw import functions
                 
-                # Альтернативный способ - через get_users
-                try:
-                    # Пробуем найти пользователя через get_users
-                    # Убираем + для поиска
-                    phone_clean = phone.lstrip('+')
-                    users = await self.client.get_users(phone_clean)
+                logger.info(f"📥 Importing contact for {phone}")
+                
+                # Создаём контакт для импорта
+                contact = InputPhoneContact(
+                    client_id=0,  # 0 для автоматической генерации ID
+                    phone=phone_clean,
+                    first_name="",  # Можно оставить пустым
+                    last_name=""
+                )
+                
+                # Импортируем контакт через raw API
+                import_result = await self.client.invoke(
+                    functions.contacts.ImportContacts([contact])
+                )
+                
+                logger.info(f"✅ Contact import result: {len(import_result.users) if import_result.users else 0} users found")
+                
+                # Получаем импортированного пользователя
+                if import_result.users and len(import_result.users) > 0:
+                    user = import_result.users[0]
+                    user_id = user.id
+                    logger.info(f"✅ Found user ID: {user_id} for phone {phone}")
                     
-                    if users:
-                        user = users[0] if isinstance(users, list) else users
-                        logger.info(f"✅ Found user by phone: {user.id}")
-                        message = await self.client.send_message(user.id, text)
-                        return message
-                    else:
-                        raise ValueError(f"User with phone {phone} not found")
+                    # Теперь отправляем сообщение по user_id
+                    message = await self.client.send_message(user_id, text)
+                    logger.info(f"✅ Message sent to {phone} (user_id={user_id}): message_id={message.id}")
+                    return message
+                else:
+                    # Если пользователь не найден после импорта, пробуем альтернативные методы
+                    logger.warning(f"⚠️ User not found after import for {phone}, trying alternative methods")
+                    raise ValueError(f"User with phone {phone} not found after import")
+                    
+            except ValueError:
+                # Пробрасываем ValueError дальше
+                raise
+            except Exception as import_error:
+                logger.warning(f"⚠️ Contact import failed for {phone}: {import_error}, trying direct send")
+                
+                # Fallback 1: Пробуем отправить напрямую по номеру (может сработать если контакт уже есть)
+                try:
+                    message = await self.client.send_message(phone, text)
+                    logger.info(f"✅ Message sent directly to {phone}: message_id={message.id}")
+                    return message
+                except Exception as direct_error:
+                    logger.warning(f"⚠️ Direct send failed: {direct_error}, trying get_users")
+                    
+                    # Fallback 2: Пробуем через get_users
+                    try:
+                        users = await self.client.get_users(phone_clean)
                         
-                except Exception as alt_error:
-                    logger.error(f"❌ Alternative method also failed: {alt_error}")
-                    raise ValueError(f"Cannot send message to {phone}: {str(direct_error)}")
+                        if users:
+                            user = users[0] if isinstance(users, list) else users
+                            logger.info(f"✅ Found user by get_users: {user.id}")
+                            message = await self.client.send_message(user.id, text)
+                            return message
+                        else:
+                            raise ValueError(f"User with phone {phone} not found")
+                    except Exception as get_users_error:
+                        logger.error(f"❌ All methods failed for {phone}")
+                        logger.error(f"  - Import error: {import_error}")
+                        logger.error(f"  - Direct send error: {direct_error}")
+                        logger.error(f"  - Get users error: {get_users_error}")
+                        raise ValueError(f"Cannot send message to {phone}: User not found or contact import failed. Error: {str(import_error)}")
         
         except ValueError:
             raise
         except Exception as e:
-            logger.error(f"❌ Failed to send message to {phone}: {e}")
+            logger.error(f"❌ Failed to send message to {phone}: {e}", exc_info=True)
             raise ValueError(f"Failed to send message to {phone}: {str(e)}")
     
     def set_webhook(self, webhook_url: str):
