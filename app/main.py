@@ -62,8 +62,26 @@ async def start_session(request: SessionStartRequest):
                 status_code=400,
                 detail="Telegram API credentials not configured. Set TELEGRAM_API_ID and TELEGRAM_API_HASH environment variables."
             )
-        
-        # Создаем клиента
+
+        # Если сессия уже есть в менеджере, обрабатываем это мягко
+        existing_client = session_manager.get_session(request.session_id)
+        existing_info = session_manager.get_session_info(request.session_id)
+        if existing_client:
+            # Если клиент уже подключен – переиспользуем сессию
+            if existing_client.is_connected:
+                logger.info(f"♻️ Session {request.session_id} already exists and is connected")
+                # Совместимость с текущим бэкендом: возвращаем detail с тем же текстом,
+                # но с корректным кодом 409, а не 500.
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Session {request.session_id} already exists"
+                )
+            else:
+                # Сессия в памяти, но в "битом" состоянии – аккуратно удаляем и создаём заново
+                logger.warning(f"⚠️ Session {request.session_id} exists in memory but not connected. Removing and recreating.")
+                await session_manager.remove_session(request.session_id)
+
+        # Создаем нового клиента
         client = session_manager.create_session(
             session_id=request.session_id,
             api_id=api_id,
@@ -367,11 +385,47 @@ async def set_webhook(session_id: str, webhook_url: str):
     """
     Установка webhook для входящих сообщений
     """
+    from .database import load_session, save_session
+
     client = session_manager.get_session(session_id)
     if not client:
         raise HTTPException(404, "Session not found")
     
+    logger.info(f"🔔 Setting webhook for session {session_id}: {webhook_url}")
+
+    # Сохраняем URL в клиенте (для runtime-обработки)
     client.set_webhook(webhook_url)
+
+    # Пытаемся сохранить webhook_url в БД, чтобы переживать перезапуски сервиса
+    try:
+        existing = await load_session(session_id)
+        if existing:
+            await save_session(
+                session_id=session_id,
+                session_string=existing["session_string"],
+                api_id=existing["api_id"],
+                api_hash=existing["api_hash"],
+                phone=existing["phone"],
+                webhook_url=webhook_url
+            )
+        else:
+            # Если по какой-то причине записи ещё нет (например, ранняя стадия),
+            # пробуем экспортировать текущий session_string и сохранить её вместе с webhook_url.
+            try:
+                session_string = await client.export_session_string()
+                await save_session(
+                    session_id=session_id,
+                    session_string=session_string,
+                    api_id=client.api_id,
+                    api_hash=client.api_hash,
+                    phone=client.phone,
+                    webhook_url=webhook_url
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to persist webhook_url for session {session_id}: {e}")
+    except Exception as e:
+        # Проблемы с БД не должны ломать основной функционал вебхука
+        logger.error(f"❌ Error while saving webhook_url for session {session_id}: {e}")
     
     return {"success": True, "webhook_url": webhook_url}
 

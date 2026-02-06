@@ -74,17 +74,31 @@ class SessionManager:
     
     async def remove_session(self, session_id: str):
         """Удаление сессии"""
-        if session_id in self.sessions:
-            client = self.sessions[session_id]
-            await client.stop()
-            del self.sessions[session_id]
-        
-        if session_id in self.sessions_info:
-            del self.sessions_info[session_id]
-        
-        # Удаляем из БД
         from .database import delete_session
-        await delete_session(session_id)
+
+        # Сначала пытаемся аккуратно остановить клиента, но ошибки "уже остановлен"
+        # или любые другие не должны блокировать удаление записи о сессии.
+        client = self.sessions.get(session_id)
+        if client:
+            try:
+                await client.stop()
+            except Exception as e:
+                # Это нормальная ситуация, если клиент уже остановлен или завершён.
+                logger.warning(f"⚠️ Error while stopping session {session_id}: {e}")
+            finally:
+                # В любом случае убираем из памяти
+                self.sessions.pop(session_id, None)
+        
+        # Удаляем метаданные о сессии из памяти
+        if session_id in self.sessions_info:
+            self.sessions_info.pop(session_id, None)
+        
+        # Удаляем запись о сессии из БД (даже если клиент уже был остановлен)
+        try:
+            await delete_session(session_id)
+        except Exception as e:
+            # Ошибки БД логируем, но не даём им "ронять" API-эндпоинт
+            logger.error(f"❌ Error deleting session {session_id} from DB: {e}")
     
     async def restore_sessions_from_db(self):
         """Восстановление всех сессий из БД при старте"""
@@ -143,6 +157,11 @@ class SessionManager:
                     if client.client.is_connected:
                         client.is_connected = True
                         await client._setup_message_handler()
+
+                        # Восстанавливаем webhook_url, если он был сохранён
+                        webhook_url = session_data.get("webhook_url")
+                        if webhook_url:
+                            client.webhook_url = webhook_url
                         
                         # Получаем информацию о пользователе
                         user = await client.get_me()
@@ -180,8 +199,11 @@ class SessionManager:
     
     async def cleanup_all(self):
         """Закрытие всех сессий"""
-        for client in self.sessions.values():
-            await client.stop()
+        for session_id, client in list(self.sessions.items()):
+            try:
+                await client.stop()
+            except Exception as e:
+                logger.warning(f"⚠️ Error while stopping session {session_id} during cleanup: {e}")
         
         self.sessions.clear()
         self.sessions_info.clear()

@@ -36,9 +36,16 @@ async def init_db():
                     api_id INTEGER NOT NULL,
                     api_hash VARCHAR(255) NOT NULL,
                     phone VARCHAR(50),
+                    webhook_url TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            """)
+
+            # На всякий случай добавляем колонку webhook_url, если БД уже существовала
+            await conn.execute("""
+                ALTER TABLE telegram_sessions
+                ADD COLUMN IF NOT EXISTS webhook_url TEXT
             """)
         
         logger.info("✅ Database connection initialized")
@@ -63,7 +70,8 @@ async def save_session(
     session_string: str,
     api_id: int,
     api_hash: str,
-    phone: Optional[str] = None
+    phone: Optional[str] = None,
+    webhook_url: Optional[str] = None
 ):
     """Сохранение session string в БД"""
     if not _pool:
@@ -73,16 +81,17 @@ async def save_session(
         async with _pool.acquire() as conn:
             await conn.execute("""
                 INSERT INTO telegram_sessions 
-                (session_id, session_string, api_id, api_hash, phone, updated_at)
-                VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+                (session_id, session_string, api_id, api_hash, phone, webhook_url, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
                 ON CONFLICT (session_id) 
                 DO UPDATE SET 
                     session_string = $2,
                     api_id = $3,
                     api_hash = $4,
                     phone = $5,
+                    webhook_url = $6,
                     updated_at = CURRENT_TIMESTAMP
-            """, session_id, session_string, api_id, api_hash, phone)
+            """, session_id, session_string, api_id, api_hash, phone, webhook_url)
         
         logger.info(f"💾 Session {session_id} saved to database")
         return True
@@ -100,7 +109,7 @@ async def load_session(session_id: str) -> Optional[dict]:
     try:
         async with _pool.acquire() as conn:
             row = await conn.fetchrow("""
-                SELECT session_string, api_id, api_hash, phone
+                SELECT session_string, api_id, api_hash, phone, webhook_url
                 FROM telegram_sessions
                 WHERE session_id = $1
             """, session_id)
@@ -111,7 +120,8 @@ async def load_session(session_id: str) -> Optional[dict]:
                     "session_string": row["session_string"],
                     "api_id": row["api_id"],
                     "api_hash": row["api_hash"],
-                    "phone": row["phone"]
+                    "phone": row["phone"],
+                    "webhook_url": row["webhook_url"]
                 }
             return None
             
@@ -128,7 +138,7 @@ async def load_all_sessions() -> list:
     try:
         async with _pool.acquire() as conn:
             rows = await conn.fetch("""
-                SELECT session_id, session_string, api_id, api_hash, phone
+                SELECT session_id, session_string, api_id, api_hash, phone, webhook_url
                 FROM telegram_sessions
             """)
             
@@ -139,7 +149,8 @@ async def load_all_sessions() -> list:
                     "session_string": row["session_string"],
                     "api_id": row["api_id"],
                     "api_hash": row["api_hash"],
-                    "phone": row["phone"]
+                    "phone": row["phone"],
+                    "webhook_url": row["webhook_url"]
                 })
             
             logger.info(f"📂 Loaded {len(sessions)} sessions from database")

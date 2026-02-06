@@ -162,7 +162,8 @@ class TelegramClient:
                 session_string=session_string,
                 api_id=self.api_id,
                 api_hash=self.api_hash,
-                phone=self.phone
+                phone=self.phone,
+                webhook_url=self.webhook_url
             )
         except Exception as e:
             logger.error(f"Failed to save session to DB: {e}")
@@ -469,24 +470,28 @@ class TelegramClient:
         
         try:
             async with httpx.AsyncClient() as http_client:
-                await http_client.post(
+                payload = {
+                    "session_id": self.session_id,
+                    "message": {
+                        "id": message.id,
+                        "chat_id": message.chat.id,
+                        "from_user": {
+                            "id": message.from_user.id if message.from_user else None,
+                            "username": message.from_user.username if message.from_user else None,
+                            "first_name": message.from_user.first_name if message.from_user else None
+                        } if message.from_user else None,
+                        "text": message.text or message.caption,
+                        "date": message.date.isoformat()
+                    }
+                }
+
+                logger.info(f"📨 Sending webhook for session {self.session_id} to {self.webhook_url}")
+                response = await http_client.post(
                     self.webhook_url,
-                    json={
-                        "session_id": self.session_id,
-                        "message": {
-                            "id": message.id,
-                            "chat_id": message.chat.id,
-                            "from_user": {
-                                "id": message.from_user.id if message.from_user else None,
-                                "username": message.from_user.username if message.from_user else None,
-                                "first_name": message.from_user.first_name if message.from_user else None
-                            } if message.from_user else None,
-                            "text": message.text or message.caption,
-                            "date": message.date.isoformat()
-                        }
-                    },
+                    json=payload,
                     timeout=10.0
                 )
+                logger.info(f"📨 Webhook response for session {self.session_id}: {response.status_code}")
         except Exception as e:
             logger.error(f"Webhook error: {e}")
     
