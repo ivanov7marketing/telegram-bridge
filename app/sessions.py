@@ -151,36 +151,33 @@ class SessionManager:
                         logger.error(f"❌ Ошибка при удалении проблемной сессии {session_id}: {delete_error}")
                     continue
                 
-                # Пытаемся подключиться
+                # Пытаемся подключиться и запустить клиент
                 try:
-                    await client.client.connect()
-                    if client.client.is_connected:
-                        client.is_connected = True
-                        
-                        # ВАЖНО: Восстанавливаем webhook_url ДО регистрации обработчика
-                        # чтобы обработчик мог использовать webhook_url в замыкании
-                        webhook_url = session_data.get("webhook_url")
-                        if webhook_url:
-                            client.webhook_url = webhook_url
-                            logger.info(f"✅ Restored webhook URL for session {session_id}: {webhook_url}")
-                        
-                        # Регистрируем обработчик ПОСЛЕ установки webhook_url
-                        await client._setup_message_handler()
-                        
-                        # ВАЖНО: Запускаем клиент для получения обновлений
-                        # Без start() клиент подключен, но не получает сообщения
-                        # start() идемпотентен - можно вызывать несколько раз безопасно
-                        try:
-                            await client.client.start()
-                            logger.info(f"🚀 Started client for session {session_id} - ready to receive messages")
-                        except Exception as start_error:
-                            # Если клиент уже запущен, start() может выбросить исключение
-                            # Проверяем, что это не критичная ошибка
-                            if "already started" in str(start_error).lower() or "already running" in str(start_error).lower():
-                                logger.info(f"✅ Client for session {session_id} already started")
-                            else:
-                                logger.error(f"❌ Failed to start client for session {session_id}: {start_error}")
-                                # Продолжаем работу, но клиент может не получать обновления
+                    # ВАЖНО: Используем start() вместо connect(), так как start() включает connect()
+                    # и запускает получение обновлений (сообщений)
+                    try:
+                        await client.client.start()
+                        logger.info(f"🚀 Started client for session {session_id} - ready to receive messages")
+                    except Exception as start_error:
+                        # Если клиент уже подключен/запущен, это нормально
+                        error_msg = str(start_error).lower()
+                        if "already connected" in error_msg or "already started" in error_msg or "already running" in error_msg:
+                            logger.info(f"✅ Client for session {session_id} already started/connected")
+                        else:
+                            logger.warning(f"⚠️ Failed to start client for session {session_id}: {start_error}")
+                            # Продолжаем работу - возможно клиент уже работает
+                    
+                    client.is_connected = True
+                    
+                    # ВАЖНО: Восстанавливаем webhook_url ДО регистрации обработчика
+                    # чтобы обработчик мог использовать webhook_url в замыкании
+                    webhook_url = session_data.get("webhook_url")
+                    if webhook_url:
+                        client.webhook_url = webhook_url
+                        logger.info(f"✅ Restored webhook URL for session {session_id}: {webhook_url}")
+                    
+                    # Регистрируем обработчик ПОСЛЕ установки webhook_url
+                    await client._setup_message_handler()
                         
                         # Получаем информацию о пользователе
                         user = await client.get_me()
