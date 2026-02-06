@@ -167,17 +167,19 @@ class SessionManager:
                             logger.warning(f"⚠️ Failed to start client for session {session_id}: {start_error}")
                             # Продолжаем работу - возможно клиент уже работает
                     
-                    client.is_connected = True
-                    
-                    # ВАЖНО: Восстанавливаем webhook_url ДО регистрации обработчика
-                    # чтобы обработчик мог использовать webhook_url в замыкании
-                    webhook_url = session_data.get("webhook_url")
-                    if webhook_url:
-                        client.webhook_url = webhook_url
-                        logger.info(f"✅ Restored webhook URL for session {session_id}: {webhook_url}")
-                    
-                    # Регистрируем обработчик ПОСЛЕ установки webhook_url
-                    await client._setup_message_handler()
+                    # Проверяем, что клиент подключен
+                    if client.client.is_connected:
+                        client.is_connected = True
+                        
+                        # ВАЖНО: Восстанавливаем webhook_url ДО регистрации обработчика
+                        # чтобы обработчик мог использовать webhook_url в замыкании
+                        webhook_url = session_data.get("webhook_url")
+                        if webhook_url:
+                            client.webhook_url = webhook_url
+                            logger.info(f"✅ Restored webhook URL for session {session_id}: {webhook_url}")
+                        
+                        # Регистрируем обработчик ПОСЛЕ установки webhook_url
+                        await client._setup_message_handler()
                         
                         # Получаем информацию о пользователе
                         user = await client.get_me()
