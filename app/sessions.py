@@ -167,6 +167,18 @@ class SessionManager:
                         # Регистрируем обработчик ПОСЛЕ установки webhook_url
                         await client._setup_message_handler()
                         
+                        # ВАЖНО: Запускаем клиент для получения обновлений
+                        # Без start() клиент подключен, но не получает сообщения
+                        try:
+                            if not client.client.is_started:
+                                await client.client.start()
+                                logger.info(f"🚀 Started client for session {session_id} - ready to receive messages")
+                            else:
+                                logger.info(f"✅ Client for session {session_id} already started")
+                        except Exception as start_error:
+                            logger.error(f"❌ Failed to start client for session {session_id}: {start_error}")
+                            # Продолжаем работу, но клиент может не получать обновления
+                        
                         # Получаем информацию о пользователе
                         user = await client.get_me()
                         

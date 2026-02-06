@@ -91,6 +91,11 @@ class TelegramClient:
                 self.is_connected = True
                 await self._setup_message_handler()
                 
+                # ВАЖНО: Запускаем клиент для получения обновлений
+                if not self.client.is_started:
+                    await self.client.start()
+                    logger.info(f"🚀 Started client for session {self.session_id} - ready to receive messages")
+                
                 # Сохраняем session string после успешной авторизации
                 await self._save_session_to_db()
                 
@@ -135,6 +140,11 @@ class TelegramClient:
             self.is_connected = True
             await self._setup_message_handler()
             
+            # ВАЖНО: Запускаем клиент для получения обновлений
+            if not self.client.is_started:
+                await self.client.start()
+                logger.info(f"🚀 Started client for session {self.session_id} - ready to receive messages")
+            
             # Сохраняем session string после успешной авторизации
             await self._save_session_to_db()
             
@@ -144,6 +154,11 @@ class TelegramClient:
             await self.client.check_password(password)
             self.is_connected = True
             await self._setup_message_handler()
+            
+            # ВАЖНО: Запускаем клиент для получения обновлений
+            if not self.client.is_started:
+                await self.client.start()
+                logger.info(f"🚀 Started client for session {self.session_id} - ready to receive messages")
             
             # Сохраняем session string после успешной авторизации
             await self._save_session_to_db()
