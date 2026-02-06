@@ -92,9 +92,15 @@ class TelegramClient:
                 await self._setup_message_handler()
                 
                 # ВАЖНО: Запускаем клиент для получения обновлений
-                if not self.client.is_started:
+                # start() идемпотентен - можно вызывать несколько раз безопасно
+                try:
                     await self.client.start()
                     logger.info(f"🚀 Started client for session {self.session_id} - ready to receive messages")
+                except Exception as start_error:
+                    if "already started" in str(start_error).lower() or "already running" in str(start_error).lower():
+                        logger.info(f"✅ Client for session {self.session_id} already started")
+                    else:
+                        logger.warning(f"⚠️ Failed to start client for session {self.session_id}: {start_error}")
                 
                 # Сохраняем session string после успешной авторизации
                 await self._save_session_to_db()
@@ -141,9 +147,15 @@ class TelegramClient:
             await self._setup_message_handler()
             
             # ВАЖНО: Запускаем клиент для получения обновлений
-            if not self.client.is_started:
+            # start() идемпотентен - можно вызывать несколько раз безопасно
+            try:
                 await self.client.start()
                 logger.info(f"🚀 Started client for session {self.session_id} - ready to receive messages")
+            except Exception as start_error:
+                if "already started" in str(start_error).lower() or "already running" in str(start_error).lower():
+                    logger.info(f"✅ Client for session {self.session_id} already started")
+                else:
+                    logger.warning(f"⚠️ Failed to start client for session {self.session_id}: {start_error}")
             
             # Сохраняем session string после успешной авторизации
             await self._save_session_to_db()
@@ -156,9 +168,15 @@ class TelegramClient:
             await self._setup_message_handler()
             
             # ВАЖНО: Запускаем клиент для получения обновлений
-            if not self.client.is_started:
+            # start() идемпотентен - можно вызывать несколько раз безопасно
+            try:
                 await self.client.start()
                 logger.info(f"🚀 Started client for session {self.session_id} - ready to receive messages")
+            except Exception as start_error:
+                if "already started" in str(start_error).lower() or "already running" in str(start_error).lower():
+                    logger.info(f"✅ Client for session {self.session_id} already started")
+                else:
+                    logger.warning(f"⚠️ Failed to start client for session {self.session_id}: {start_error}")
             
             # Сохраняем session string после успешной авторизации
             await self._save_session_to_db()

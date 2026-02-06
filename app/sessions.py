@@ -169,15 +169,18 @@ class SessionManager:
                         
                         # ВАЖНО: Запускаем клиент для получения обновлений
                         # Без start() клиент подключен, но не получает сообщения
+                        # start() идемпотентен - можно вызывать несколько раз безопасно
                         try:
-                            if not client.client.is_started:
-                                await client.client.start()
-                                logger.info(f"🚀 Started client for session {session_id} - ready to receive messages")
-                            else:
-                                logger.info(f"✅ Client for session {session_id} already started")
+                            await client.client.start()
+                            logger.info(f"🚀 Started client for session {session_id} - ready to receive messages")
                         except Exception as start_error:
-                            logger.error(f"❌ Failed to start client for session {session_id}: {start_error}")
-                            # Продолжаем работу, но клиент может не получать обновления
+                            # Если клиент уже запущен, start() может выбросить исключение
+                            # Проверяем, что это не критичная ошибка
+                            if "already started" in str(start_error).lower() or "already running" in str(start_error).lower():
+                                logger.info(f"✅ Client for session {session_id} already started")
+                            else:
+                                logger.error(f"❌ Failed to start client for session {session_id}: {start_error}")
+                                # Продолжаем работу, но клиент может не получать обновления
                         
                         # Получаем информацию о пользователе
                         user = await client.get_me()
