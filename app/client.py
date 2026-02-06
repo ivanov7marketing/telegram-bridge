@@ -448,52 +448,91 @@ class TelegramClient:
             logger.error(f"❌ Failed to send message to {phone}: {e}", exc_info=True)
             raise ValueError(f"Failed to send message to {phone}: {str(e)}")
     
-    def set_webhook(self, webhook_url: str):
+    async def set_webhook(self, webhook_url: str):
         """Установка webhook для входящих сообщений"""
         self.webhook_url = webhook_url
+        logger.info(f"🔔 Setting webhook for session {self.session_id}: {webhook_url}")
+        
+        # Если обработчик уже зарегистрирован, нужно перерегистрировать его
+        # чтобы замыкание обновилось с новым webhook_url
+        if self._message_handler_registered:
+            # Сбрасываем флаг и перерегистрируем обработчик
+            self._message_handler_registered = False
+            await self._setup_message_handler()
+        else:
+            # Если обработчик ещё не зарегистрирован, просто регистрируем его
+            await self._setup_message_handler()
     
     async def _setup_message_handler(self):
         """Настройка обработчика входящих сообщений"""
         if self._message_handler_registered:
+            logger.debug(f"[webhook] Обработчик уже зарегистрирован для сессии {self.session_id}")
             return
+        
+        logger.info(f"📝 Registering message handler for session {self.session_id}, webhook_url={self.webhook_url}")
         
         @self.client.on_message(filters.incoming & ~filters.service)
         async def handle_incoming(client, message):
+            # Пропускаем исходящие сообщения (от бота)
+            if message.outgoing:
+                logger.debug(f"[webhook] Пропускаем исходящее сообщение {message.id} для сессии {self.session_id}")
+                return
+            
+            logger.info(f"📨 Received incoming message {message.id} for session {self.session_id}, webhook_url={self.webhook_url}")
+            
             if self.webhook_url:
                 await self._send_to_webhook(message)
+            else:
+                logger.warning(f"⚠️ Webhook URL не настроен для сессии {self.session_id}, сообщение {message.id} не будет отправлено")
         
         self._message_handler_registered = True
+        logger.info(f"✅ Message handler registered for session {self.session_id}")
     
     async def _send_to_webhook(self, message):
         """Отправка сообщения на webhook"""
         import httpx
         
+        if not self.webhook_url:
+            logger.debug(f"[webhook] Webhook URL не настроен для сессии {self.session_id}")
+            return
+        
         try:
-            async with httpx.AsyncClient() as http_client:
-                payload = {
-                    "session_id": self.session_id,
-                    "message": {
-                        "id": message.id,
-                        "chat_id": message.chat.id,
-                        "from_user": {
-                            "id": message.from_user.id if message.from_user else None,
-                            "username": message.from_user.username if message.from_user else None,
-                            "first_name": message.from_user.first_name if message.from_user else None
-                        } if message.from_user else None,
-                        "text": message.text or message.caption,
-                        "date": message.date.isoformat()
-                    }
+            # Формируем payload в формате, который ожидает основное приложение
+            payload = {
+                "session_id": self.session_id,
+                "message": {
+                    "id": str(message.id),
+                    "chat_id": str(message.chat.id),
+                    "from_user": {
+                        "id": message.from_user.id if message.from_user else None,
+                        "username": message.from_user.username if message.from_user else None,
+                        "phone": getattr(message.from_user, 'phone', None)
+                    } if message.from_user else None,
+                    "text": message.text or message.caption or "",
+                    "date": message.date.isoformat() if message.date else None
                 }
-
-                logger.info(f"📨 Sending webhook for session {self.session_id} to {self.webhook_url}")
+            }
+            
+            logger.info(f"📨 Sending webhook for session {self.session_id} to {self.webhook_url}")
+            
+            async with httpx.AsyncClient(timeout=10.0) as http_client:
                 response = await http_client.post(
                     self.webhook_url,
                     json=payload,
-                    timeout=10.0
+                    headers={"Content-Type": "application/json"}
                 )
+                
                 logger.info(f"📨 Webhook response for session {self.session_id}: {response.status_code}")
+                
+                if response.status_code != 200:
+                    logger.warning(f"⚠️ Webhook returned non-200 status: {response.status_code}, body: {response.text[:200]}")
+                    
+        except httpx.TimeoutException:
+            logger.error(f"❌ Timeout при вызове webhook для сессии {self.session_id}")
+        except httpx.ConnectError:
+            logger.error(f"❌ Ошибка подключения к webhook для сессии {self.session_id}: {self.webhook_url}")
         except Exception as e:
-            logger.error(f"Webhook error: {e}")
+            logger.error(f"❌ Ошибка при вызове webhook для сессии {self.session_id}: {e}", exc_info=True)
     
     async def export_session_string(self) -> str:
         """Экспорт session string для сохранения"""

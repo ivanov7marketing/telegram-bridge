@@ -391,10 +391,8 @@ async def set_webhook(session_id: str, webhook_url: str):
     if not client:
         raise HTTPException(404, "Session not found")
     
-    logger.info(f"🔔 Setting webhook for session {session_id}: {webhook_url}")
-
-    # Сохраняем URL в клиенте (для runtime-обработки)
-    client.set_webhook(webhook_url)
+    # Сохраняем URL в клиенте (для runtime-обработки) и перерегистрируем обработчик
+    await client.set_webhook(webhook_url)
 
     # Пытаемся сохранить webhook_url в БД, чтобы переживать перезапуски сервиса
     try:
